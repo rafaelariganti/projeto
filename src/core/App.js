@@ -62,11 +62,33 @@ async function run() {
     throw new Encerrar();
   }
 
+  // Modo demonstração: a API responde com os dados guardados, sem banco.
+  if (config.DEMO && api) {
+    try {
+      const r = require('../demo/Demo').responder(method, path, require('./Context').ctx().req.query || {});
+      if (r.arquivo) {
+        const res = require('./Context').ctx().res;
+        res.setHeader('Content-Type', r.arquivo.mime || 'application/octet-stream');
+        if (r.arquivo.disp) res.setHeader('Content-Disposition', r.arquivo.disp);
+        res.end(r.arquivo.conteudo);
+        throw new Encerrar();
+      }
+      Response.json(r.json);
+    } catch (e) {
+      if (e instanceof HttpException) {
+        const out = { error: e.message };
+        if (e.codigo) out.code = e.codigo;
+        Response.json(out, e.status);
+      }
+      throw e;
+    }
+  }
+
   try {
-    await require('../database/Migrator').garantir();
+    if (!config.DEMO) await require('../database/Migrator').garantir();
     const r = rotas();
 
-    if (api && method !== 'GET' && !SEM_CSRF.includes(path)) Csrf.verificar();
+    if (api && method !== 'GET' && !SEM_CSRF.includes(path) && !config.DEMO) Csrf.verificar();
 
     const u = await Auth.user();
     if (u && int(u.deve_trocar_senha) === 1 && !DURANTE_TROCA.includes(path)) {

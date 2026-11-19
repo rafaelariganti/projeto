@@ -10,6 +10,7 @@ const { HttpException } = require('./HttpException');
 const { hash_equals } = require('../helpers');
 
 function token() {
+  if (require('../bootstrap').DEMO) return 'demo'; // modo demonstração: sem sessão
   if (!Session.get('csrf')) Session.set('csrf', crypto.randomBytes(32).toString('hex'));
   return Session.get('csrf');
 }

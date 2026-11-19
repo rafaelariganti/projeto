@@ -55,5 +55,7 @@ const config = {
 config.IS_PROD = (process.env.APP_ENV || 'production') === 'production';
 /** Rodando como função serverless da Vercel (sem disco permanente, sem processo sempre ligado). */
 config.SERVERLESS = !!process.env.VERCEL;
+/** Modo demonstração: sem banco, login sem senha, só pra ver as telas (ver src/demo/Demo.js). */
+config.DEMO = ['1', 'true', 'sim'].includes(String(process.env.DEMO || '').toLowerCase());
 
 module.exports = config;

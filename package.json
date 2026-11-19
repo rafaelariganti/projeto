@@ -11,7 +11,9 @@
     "schema": "node src/database/Migrator.js --sql > database.sql",
     "test": "node tests/unit/run.js",
     "dados": "node src/database/DadosFicticios.js",
-    "smoke": "bash tests/smoke.sh"
+    "smoke": "bash tests/smoke.sh",
+    "demo": "node -e \"process.env.DEMO='1'; require('./server').iniciar()\"",
+    "gerar-demo": "node scripts/gerar-demo.js"
   },
   "engines": {
     "node": ">=18"

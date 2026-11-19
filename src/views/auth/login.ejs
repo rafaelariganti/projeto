@@ -28,14 +28,14 @@ const nomeUsuario = usuario ? e(usuario.nome || usuario.username) : '';
 
       <!-- ENTRAR -->
       <form id="login-form" class="auth-form<%- estado !== 'login' ? ' hidden' : '' %>" autocomplete="on" novalidate>
-        <header><h1>Bem-vindo de volta</h1><p class="auth-sub">Entre com seu usuário para continuar.</p></header>
+        <header><h1>Bem-vindo de volta</h1><p class="auth-sub"><% if (locals.demo) { %>Versão de demonstração: é só clicar em <b>Entrar</b>, não precisa de senha. Nada do que você fizer é salvo.<% } else { %>Entre com seu usuário para continuar.<% } %></p></header>
         <label class="field"><span>Usuário</span>
           <div class="input-ico"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4.5 21c.8-4 3.8-6.2 7.5-6.2s6.7 2.2 7.5 6.2"/></svg>
-          <input type="text" id="login-user" name="username" autocomplete="username" autocapitalize="none" spellcheck="false" required/></div>
+          <input type="text" id="login-user" name="username" autocomplete="username" autocapitalize="none" spellcheck="false" required<% if (locals.demo) { %> value="demonstracao"<% } %>/></div>
         </label>
         <label class="field"><span>Senha</span>
           <div class="input-ico pass"><svg viewBox="0 0 24 24"><rect x="4" y="10.5" width="16" height="10.5" rx="2.5"/><path d="M8 10.5V7a4 4 0 0 1 8 0v3.5"/></svg>
-          <input type="password" id="login-pass" name="password" autocomplete="current-password" required/>
+          <input type="password" id="login-pass" name="password" autocomplete="current-password" required<% if (locals.demo) { %> value="demo"<% } %>/>
           <button type="button" class="eye" data-eye="login-pass" aria-label="Mostrar senha"><%- olho %></button></div>
           <small class="caps hidden" id="login-caps">Caps Lock está ligado</small>
         </label>

@@ -9,6 +9,7 @@ const Response = require('../core/Response');
 const { env } = require('../helpers');
 
 async function check() {
+  if (config.DEMO) Response.json({ status: 'UP', version: config.APP_VERSION, environment: 'demo', checks: { database: 'DEMO' }, latency_ms: 0 });
   const inicio = Date.now();
   let db = 'UP';
   try {

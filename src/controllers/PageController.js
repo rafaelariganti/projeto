@@ -45,7 +45,8 @@ class PageController extends Controller {
     if (u && !trocar && !termos) Response.redirect(this.destino());
     View.render('auth/login', {
       titulo: 'Entrar',
-      precisaSetup: (await User.count()) === 0,
+      precisaSetup: require('../bootstrap').DEMO ? false : (await User.count()) === 0,
+      demo: require('../bootstrap').DEMO,
       trocarSenha: trocar,
       aceitarTermos: termos,
       usuario: u,

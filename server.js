@@ -69,11 +69,11 @@ app.get(BASE + 'uploads/*', async (req, res) => {
 // ─── Sessão (gravada no MySQL: funciona com várias instâncias atrás do balanceador) ───
 // A tabela `sessions` é criada pelo Migrator (o store só lê e grava nela).
 // Pool próprio (o store sozinho ignoraria o SSL que os bancos na nuvem exigem).
-const poolSessoes = require('mysql2/promise').createPool({
+const poolSessoes = config.DEMO ? null : require('mysql2/promise').createPool({
   ...require('./src/core/Database').conexao(),
   connectionLimit: config.SERVERLESS ? 1 : 5, maxIdle: config.SERVERLESS ? 1 : 5, idleTimeout: 60000, enableKeepAlive: true,
 });
-const store = new MySQLStore({
+const store = config.DEMO ? undefined : new MySQLStore({
   // Na Vercel não há processo sempre ligado pra limpar sessões vencidas; elas são ignoradas ao ler e limpas pelos acessos normais.
   createDatabaseTable: false, clearExpired: !config.SERVERLESS, checkExpirationInterval: 15 * 60 * 1000,
   expiration: Session.REMEMBER * 1000,
@@ -94,7 +94,7 @@ if (!segredo) {
   if (!segredo) { segredo = require('crypto').randomBytes(32).toString('hex'); try { fs.writeFileSync(arq, segredo, { mode: 0o600 }); } catch { /* sem permissão */ } }
 }
 
-const middlewareSessao = session({
+const middlewareSessao = config.DEMO ? null : session({
   name: 'dre_sess',
   secret: segredo,
   store,
@@ -105,8 +105,8 @@ const middlewareSessao = session({
   cookie: { path: BASE, httpOnly: true, sameSite: 'strict', secure: 'auto', maxAge: null },
 });
 app.use((req, res, next) => {
-  // /health não cria sessão nem toca no banco de sessões.
-  if (req.path === BASE + 'health') return next();
+  // /health não cria sessão nem toca no banco de sessões. No modo demonstração não existe banco nenhum.
+  if (req.path === BASE + 'health' || config.DEMO) return next();
   middlewareSessao(req, res, (err) => {
     // Banco fora do ar: segue sem sessão (a tela mostra a mensagem de conexão em vez de um erro genérico).
     if (err) Logger.error('Falha ao ler a sessão', { erro: err.message });
@@ -160,11 +160,12 @@ const PORT = Number(env('PORT', 3000));
 /** Cria o banco/tabelas (se precisar) antes de aceitar requisições. */
 async function iniciar() {
   try {
-    await require('./src/database/Migrator').garantir();
+    if (!config.DEMO) await require('./src/database/Migrator').garantir();
   } catch (e) {
     // Sem banco o site ainda sobe: as telas mostram a mensagem de conexão e o /health fica DOWN.
     Logger.error('Não foi possível preparar o banco na inicialização', { erro: e.message });
   }
+  if (config.DEMO) Logger.info('MODO DEMONSTRAÇÃO: sem banco, login sem senha, nada é salvo');
   return app.listen(PORT, () => Logger.info(`DRE System ${config.APP_VERSION} rodando em http://localhost:${PORT}${BASE}`));
 }
 

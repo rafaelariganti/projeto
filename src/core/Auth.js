@@ -28,6 +28,11 @@ async function user() {
   if (c.authCarregado) return c.user || null;
   c.authCarregado = true;
   c.user = null;
+  if (require('../bootstrap').DEMO) {
+    const Demo = require('../demo/Demo');
+    c.user = Demo.logado() ? Demo.usuario() : null;
+    return c.user;
+  }
   const id = int(Session.get('uid') ?? 0);
   if (!id) return null;
   if (Session.expirada()) { await Session.destroy(); return null; }

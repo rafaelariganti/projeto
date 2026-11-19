@@ -95,6 +95,18 @@ Numa VPS:
 
 > Rodando numa subpasta (ex.: `https://site.com/dre/`)? Use `BASE_PATH=/dre/` no `.env`.
 
+### 👀 Modo demonstração (sem banco)
+
+Pra mostrar as telas sem configurar banco nenhum (apresentação, portfólio, Vercel grátis): coloque a variável **`DEMO=1`**.
+
+- O login já vem preenchido e entra sem senha, como administrador.
+- Todas as telas mostram a clínica fictícia (dashboard, DRE, calendário, notas com PDF/XML, exportações…), a partir de `demo/dados.json.gz`.
+- Criar, editar, apagar, importar e enviar arquivo mostram o aviso "Modo demonstração: nada é salvo".
+
+Local: `npm run demo`. Na Vercel: **Settings → Environment Variables → `DEMO` = `1`** e redeploy (não precisa de nenhuma variável `DB_*`).
+
+Pra atualizar os dados da demonstração depois de mudar o sistema: gere os dados fictícios num banco de teste, suba o sistema normal e rode `npm run gerar-demo`.
+
 ### ▲ Na Vercel
 
 A Vercel não tem MySQL nem disco permanente, então o projeto se adapta sozinho quando roda lá:
