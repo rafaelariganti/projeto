@@ -17,8 +17,35 @@ function offsetFuso() {
   return `${s}${String(Math.floor(a / 60)).padStart(2, '0')}:${String(a % 60).padStart(2, '0')}`;
 }
 
+/**
+ * SSL: bancos na nuvem (Aiven, TiDB, PlanetScale, Railway público, RDS) costumam exigir.
+ *   DB_SSL=1            → conexão criptografada, validando o certificado
+ *   DB_SSL_CA=<PEM>     → certificado da autoridade (quando o provedor fornece um próprio, ex.: Aiven)
+ *   DB_SSL_INSEGURO=1   → criptografa sem validar o certificado (só se o provedor não der o CA)
+ */
+function ssl() {
+  if (env('DB_SSL', '0') !== '1') return undefined;
+  const o = { minVersion: 'TLSv1.2', rejectUnauthorized: env('DB_SSL_INSEGURO', '0') !== '1' };
+  const ca = env('DB_SSL_CA', '');
+  if (ca) o.ca = ca.replace(/\\n/g, '\n');
+  return o;
+}
+
+/** Dados de conexão (também usados pelo armazenamento de sessões). */
+function conexao() {
+  return {
+    host: env('DB_HOST', 'localhost'),
+    port: Number(env('DB_PORT', 3306)),
+    user: env('DB_USER', 'root'),
+    password: env('DB_PASS', ''),
+    database: env('DB_NAME', 'dre_oaf'),
+    ssl: ssl(),
+  };
+}
+
 function opcoes(comBanco) {
   return {
+    ssl: ssl(),
     host: env('DB_HOST', 'localhost'),
     port: Number(env('DB_PORT', 3306)),
     user: env('DB_USER', 'root'),
@@ -31,7 +58,11 @@ function opcoes(comBanco) {
     bigNumberStrings: false,
     timezone: 'local',
     waitForConnections: true,
-    connectionLimit: Number(env('DB_POOL', 10)),
+    // Na Vercel cada instância é um processo separado: poucas conexões por instância pra não estourar o limite do banco.
+    connectionLimit: Number(env('DB_POOL', process.env.VERCEL ? 2 : 10)),
+    maxIdle: Number(env('DB_POOL', process.env.VERCEL ? 2 : 10)),
+    idleTimeout: 60000,
+    enableKeepAlive: true,
     multipleStatements: false,
   };
 }
@@ -138,4 +169,4 @@ async function transaction(fn) {
 
 async function fechar() { if (pool) { await pool.end(); pool = null; } }
 
-module.exports = { getPool, all, one, value, run, insert, exec, transaction, fechar };
+module.exports = { conexao, getPool, all, one, value, run, insert, exec, transaction, fechar };

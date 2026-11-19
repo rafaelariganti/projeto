@@ -32,7 +32,7 @@ class Importacao extends Model {
     if (!tab) return 0;
     const Upload = require('../services/Upload');
     return Database.transaction(async () => {
-      if (tab === 'transactions') for (const c of await Database.all('SELECT comprovante_path FROM transactions WHERE importacao_id=? AND comprovante_path IS NOT NULL', [imp.id])) Upload.apagar(c.comprovante_path);
+      if (tab === 'transactions') for (const c of await Database.all('SELECT comprovante_path FROM transactions WHERE importacao_id=? AND comprovante_path IS NOT NULL', [imp.id])) await Upload.apagar(c.comprovante_path);
       if (tab === 'transactions') await Database.run('UPDATE notas_fiscais SET transaction_id=NULL WHERE transaction_id IN (SELECT id FROM transactions WHERE importacao_id=?)', [imp.id]);
       const n = await Database.run(`DELETE FROM \`${tab}\` WHERE importacao_id=?`, [imp.id]);
       await Database.run('UPDATE importacoes SET desfeita_em=NOW() WHERE id=?', [imp.id]);

@@ -14,6 +14,7 @@ Node.js + Express + MySQL, organizado em MVC (Models, Views em EJS, Controllers)
 2. [Como rodar no seu PC](#-como-rodar-no-seu-pc)
 3. [Como rodar com Docker](#-como-rodar-com-docker)
 4. [Como publicar (VPS / hospedagem com Node)](#-como-publicar)
+   - [Na Vercel](#-na-vercel)
 5. [Primeiro acesso](#-primeiro-acesso)
 6. [Vindo da versão PHP (3.x)](#-vindo-da-versão-php-3x)
 7. [Telas](#️-telas)
@@ -93,6 +94,44 @@ Numa VPS:
 6. Garanta permissão de escrita nas pastas **`uploads/`** e **`storage/`**.
 
 > Rodando numa subpasta (ex.: `https://site.com/dre/`)? Use `BASE_PATH=/dre/` no `.env`.
+
+### ▲ Na Vercel
+
+A Vercel não tem MySQL nem disco permanente, então o projeto se adapta sozinho quando roda lá:
+
+- o servidor vira uma função (`api/index.js` exporta o mesmo app do `server.js`);
+- uploads, notas fiscais, comprovantes e importações em andamento ficam na tabela **`arquivos`** do banco (`ARMAZENAMENTO=banco`);
+- a versão do schema e as sessões de login também ficam no banco;
+- `assets/` é publicado pela CDN da Vercel (o build copia pra `public/`); o resto do código nunca fica público.
+
+**Passo a passo:**
+
+1. **Crie um MySQL na nuvem.** Sugestão grátis: [Aiven](https://aiven.io) → *Create service* → MySQL → plano *Free*. Na tela do serviço anote host, porta, usuário, senha e baixe o **CA certificate**.
+2. Na Vercel, **Add New → Project** → importe o repositório do GitHub. *Framework Preset*: **Other** (o resto vem do `vercel.json`).
+3. Em **Settings → Environment Variables**, cadastre:
+
+   | Variável | Valor |
+   |---|---|
+   | `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASS` | os do banco (Aiven: porta costuma ser 2xxxx) |
+   | `DB_NAME` | `defaultdb` (Aiven) ou o nome do banco que você criou |
+   | `DB_SSL` | `1` |
+   | `DB_SSL_CA` | conteúdo do `ca.pem` (cole tudo, com as linhas `-----BEGIN…`) |
+   | `SESSION_SECRET` | um texto longo e aleatório (ex.: gere com `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`) |
+   | `APP_ENV` | `production` |
+   | `LGPD_CONTROLADOR`, `LGPD_EMAIL` | dados da LGPD (opcional) |
+
+   (Ou, no lugar das `DB_*`, uma `DATABASE_URL=mysql://usuario:senha@host:porta/banco?ssl-mode=REQUIRED`.)
+4. **Deploy.** No primeiro acesso as tabelas são criadas (leva alguns segundos) e aparece o "Primeiro acesso".
+5. Dados de teste no banco da nuvem (opcional, do seu PC): coloque no `.env` os mesmos dados do banco + `ARMAZENAMENTO=banco` e rode `npm run dados`.
+
+**Limites da Vercel (plano grátis):**
+- cada requisição pode ter no máximo **4,5 MB** — arquivos maiores que ~4 MB não sobem (o sistema já avisa);
+- cada requisição pode levar até **60 s** — importação de planilhas muito grandes (milhares de linhas) com o banco longe pode passar disso; divida o arquivo;
+- o banco grátis tem pouco espaço (Aiven free: 1 GB), e os PDFs/XML ficam nele.
+
+Se o sistema for usado de verdade (muitos arquivos, planilhas grandes), uma VPS, o Railway/Render ou a AWS (seção abaixo) servem melhor — lá ele roda como servidor normal, com os arquivos em disco.
+
+**Deu "500 FUNCTION_INVOCATION_FAILED"?** Abra *Deployments → (o deploy) → Logs*. Quase sempre é variável do banco faltando/errada ou SSL: confira `DB_SSL=1` e o `DB_SSL_CA`. Pra testar sem o certificado, `DB_SSL_INSEGURO=1` (criptografa, mas não confere o certificado).
 
 ---
 
@@ -216,6 +255,8 @@ O que ele entende sozinho:
 ```
 DRE-node/
 ├── server.js                 ← front controller: Express serve os estáticos e manda o resto pro App
+├── api/index.js              ← entrada da Vercel (exporta o mesmo app)
+├── vercel.json               ← configuração da Vercel (rotas, build, limites da função)
 ├── package.json              ← dependências e comandos (npm start, npm test…)
 ├── .env.example              ← modelo da configuração (copie para .env)
 ├── database.sql              ← schema completo (opcional, as tabelas são criadas sozinhas)
@@ -234,6 +275,7 @@ DRE-node/
 │   │                                   Usuario, Perfil, Log, Export, Importacao
 │   ├── models/               ← um por tabela, com o SQL e as validações
 │   ├── services/             ← regras maiores: DreService + Dre/ (Strategy), NotaFiscal/ (Factory),
+│   │                            Armazenamento (arquivos no disco ou no banco),
 │   │   └── Spreadsheet/         ImportService, Upload, PlanilhaReader (xlsx/csv), XlsxWriter, PdfWriter
 │   ├── eventos/              ← Despachante, Evento, Ouvinte e ouvintes/ (Observer)
 │   ├── database/             ← Migrator (cria/atualiza tabelas), DadosFicticios, MtRand
@@ -603,5 +645,3 @@ Prints em [`docs/aws/prints/`](docs/aws/prints/) (dados pessoais do cliente de t
 - [x] Escalabilidade analisada e teste de carga (k6)
 - [x] Custo estimado
 - [x] Limitações do Academy e diferenças para produção
-#   p r o j e t o  
- 

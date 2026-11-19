@@ -13,7 +13,7 @@ const Database = require('../core/Database');
 const Permissions = require('../core/Permissions');
 const { int } = require('../helpers');
 
-const VERSAO = 11; // 11 = versão Node (tabela de sessões)
+const VERSAO = 12; // 11 = versão Node (sessões) · 12 = arquivos no banco (Vercel) e versão do schema no banco
 
 function tabelas() {
   const e = 'ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci';
@@ -233,6 +233,19 @@ function tabelas() {
       data       MEDIUMTEXT COLLATE utf8mb4_bin,
       INDEX idx_sessions_expires (expires)
     ) ${e}`,
+    // Arquivos guardados no banco quando ARMAZENAMENTO=banco (Vercel/serverless: o disco não é permanente).
+    arquivos: `CREATE TABLE IF NOT EXISTS arquivos (
+      caminho   VARCHAR(255) NOT NULL PRIMARY KEY,
+      mime      VARCHAR(100) NULL,
+      tamanho   INT NOT NULL DEFAULT 0,
+      conteudo  LONGBLOB NOT NULL,
+      criado_em DATETIME DEFAULT CURRENT_TIMESTAMP
+    ) ${e}`,
+    // Controle interno (versão do schema já aplicada).
+    app_meta: `CREATE TABLE IF NOT EXISTS app_meta (
+      k VARCHAR(50) NOT NULL PRIMARY KEY,
+      v VARCHAR(255) NULL
+    ) ${e}`,
     rate_limits: `CREATE TABLE IF NOT EXISTS rate_limits (
       k VARCHAR(190) PRIMARY KEY, start_at INT NOT NULL, hits INT NOT NULL DEFAULT 0
     ) ${e}`,
@@ -404,9 +417,14 @@ async function garantir() {
     let atual = null;
     try { atual = int(fs.readFileSync(LOCK, 'utf8').trim()); } catch { /* não existe */ }
     if (atual !== VERSAO) {
-      await migrar();
-      try { fs.writeFileSync(LOCK, String(VERSAO)); } catch { /* sem permissão: tenta de novo na próxima */ }
+      // Sem o arquivo (ex.: Vercel, onde o disco não fica): confere a versão gravada no próprio banco.
+      try { atual = int(await Database.value("SELECT v FROM app_meta WHERE k='schema_version'")); } catch { atual = null; }
     }
+    if (atual !== VERSAO) {
+      await migrar();
+      await Database.run("REPLACE INTO app_meta (k, v) VALUES ('schema_version', ?)", [String(VERSAO)]);
+    }
+    try { fs.writeFileSync(LOCK, String(VERSAO)); } catch { /* disco só leitura: tudo bem, a versão está no banco */ }
     verificado = true;
   })().finally(() => { emAndamento = null; });
   return emAndamento;
@@ -428,6 +446,7 @@ if (require.main === module) {
       process.stdout.write(out);
     } else if (args.includes('--migrate')) {
       await migrar();
+      await Database.run("REPLACE INTO app_meta (k, v) VALUES ('schema_version', ?)", [String(VERSAO)]);
       try { fs.writeFileSync(LOCK, String(VERSAO)); } catch { /* ignora */ }
       console.log(`Migrações aplicadas (versão ${VERSAO}).`);
     } else {

@@ -144,12 +144,12 @@ class AuthController extends Controller {
       telefone: fone('telefone', 'Telefone comercial'), ramal: ramal !== '' ? ramal : null,
       whatsapp: fone('whatsapp', 'WhatsApp comercial'),
     };
-    const foto = Upload.salvar('foto', 'perfil', Upload.IMAGEM, 8 * 1024 * 1024);
+    const foto = await Upload.salvar('foto', 'perfil', Upload.IMAGEM, 8 * 1024 * 1024);
     if (foto) {
-      Upload.apagar(atual.foto_path);
+      await Upload.apagar(atual.foto_path);
       dados.foto_path = foto.path; dados.foto_nome = foto.nome;
     } else if (this.input('remover_foto') === '1') {
-      Upload.apagar(atual.foto_path);
+      await Upload.apagar(atual.foto_path);
       dados.foto_path = null; dados.foto_nome = null;
     }
     await User.update(int(u.id), dados);

@@ -13,3 +13,4 @@ storage/schema_version
 storage/session_secret
 uploads/*/*
 !**/.gitkeep
+public

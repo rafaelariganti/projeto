@@ -1,6 +1,6 @@
 {
   "name": "dre-system",
-  "version": "4.0.0",
+  "version": "4.1.0",
   "description": "DRE System — OAF Controle Financeiro (Node.js + Express + MySQL, MVC)",
   "main": "server.js",
   "private": true,

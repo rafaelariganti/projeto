@@ -11,3 +11,4 @@ storage/notas/*
 storage/comprovantes/*
 !storage/comprovantes/.gitkeep
 *.log
+public/

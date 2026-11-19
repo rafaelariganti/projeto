@@ -19,10 +19,7 @@
  *
  * Os números são gerados sempre iguais (semente fixa, mesmo mt_rand do PHP), então dá pra conferir o DRE à mão.
  */
-const fs = require('fs');
-const path = require('path');
 const crypto = require('crypto');
-const config = require('../bootstrap');
 const Database = require('../core/Database');
 const Termos = require('../core/Termos');
 const Migrator = require('./Migrator');
@@ -30,6 +27,7 @@ const MtRand = require('./MtRand');
 const Transacao = require('../models/Transacao');
 const User = require('../models/User');
 const PdfWriter = require('../services/Spreadsheet/PdfWriter');
+const Armazenamento = require('../services/Armazenamento');
 const { only_digits, fmt_cnpj, number_format, round, int, float, hoje, agora, pad, mb_substr, env } = require('../helpers');
 
 const INICIO = '2025-01-01';
@@ -84,7 +82,7 @@ class DadosFicticios {
   async limpar() {
     for (const n of await Database.all('SELECT pdf_path, xml_path FROM notas_fiscais')) {
       for (const p of Object.values(n)) {
-        if (p && String(p).startsWith('storage/notas/')) { try { fs.unlinkSync(path.join(config.ROOT_DIR, p)); } catch { /* já foi */ } }
+        if (p && String(p).startsWith('storage/notas/')) await Armazenamento.apagar(p);
       }
     }
     for (const t of ['notas_fiscais', 'transactions', 'transfers', 'documentos', 'importacoes', 'parceiros', 'fornecedores', 'clientes']) await Database.run(`DELETE FROM \`${t}\``);
@@ -348,7 +346,6 @@ class DadosFicticios {
 
   // ─── Notas fiscais com XML e PDF ────────────────────────────────────────
   async notas() {
-    fs.mkdirSync(path.join(config.STORAGE_DIR, 'notas'), { recursive: true, mode: 0o770 });
     const empresa = '11222333000181'; // CNPJ fictício da clínica (válido)
     const docDe = async (nome, tab) => only_digits(String(await Database.value(`SELECT cnpj_cpf FROM \`${tab}\` WHERE nome=?`, [nome]) ?? ''));
     let n = 0;
@@ -393,15 +390,15 @@ class DadosFicticios {
     }
     // Uma nota só com PDF (recibo escaneado), sem dados — pra testar o "completar à mão"
     const pdf = DadosFicticios.pdfNota('Recibo avulso', 'Chaveiro Rápido', 180.00, this.hoje, '—', 'Cópia de chaves e troca de fechadura');
-    const p = this.salvarArquivo(pdf, 'pdf');
+    const p = await this.salvarArquivo(pdf, 'pdf');
     await Database.run('INSERT INTO notas_fiscais (tipo, modelo, numero, valor, descricao, pdf_path, pdf_nome, user_id) VALUES (?,?,?,?,?,?,?,1)',
       ['entrada', 'Outro', null, 0, 'recibo_chaveiro_escaneado', p, 'recibo_chaveiro_escaneado.pdf']);
     return n + 1;
   }
 
   async gravarNota(d, xml, titulo, quem, valor, chave, comPdf) {
-    const px = this.salvarArquivo(xml, 'xml');
-    const pp = comPdf ? this.salvarArquivo(DadosFicticios.pdfNota(titulo, quem, valor, d.data_emissao, chave, String(d.descricao ?? '')), 'pdf') : null;
+    const px = await this.salvarArquivo(xml, 'xml');
+    const pp = comPdf ? await this.salvarArquivo(DadosFicticios.pdfNota(titulo, quem, valor, d.data_emissao, chave, String(d.descricao ?? '')), 'pdf') : null;
     const nomeBase = titulo.replace(/ /g, '_').replace(/-/g, '').toLowerCase();
     await Database.insert(`INSERT INTO notas_fiscais (tipo, modelo, numero, serie, chave, data_emissao, valor, emitente_nome, emitente_doc, destinatario_nome, destinatario_doc,
         descricao, xml_path, xml_nome, pdf_path, pdf_nome, transaction_id, user_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,1)`,
@@ -409,10 +406,10 @@ class DadosFicticios {
       d.destinatario_nome, d.destinatario_doc, mb_substr(String(d.descricao ?? ''), 0, 255), px, `${nomeBase}.xml`, pp, pp ? `${nomeBase}.pdf` : null, d.transaction_id]);
   }
 
-  salvarArquivo(conteudo, ext) {
-    const nome = `${Date.now()}-${crypto.randomBytes(6).toString('hex')}.${ext}`;
-    fs.writeFileSync(path.join(config.STORAGE_DIR, 'notas', nome), conteudo);
-    return `storage/notas/${nome}`;
+  async salvarArquivo(conteudo, ext) {
+    const rel = `storage/notas/${Date.now()}-${crypto.randomBytes(6).toString('hex')}.${ext}`;
+    await Armazenamento.gravar(rel, conteudo);
+    return rel;
   }
 
   static xmlNfe(chave, num, data, cnpjEmit, emit, cnpjDest, itens, total, dups) {

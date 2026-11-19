@@ -23,7 +23,8 @@ const Logger = require('./src/core/Logger');
 const app = express();
 app.disable('x-powered-by');
 app.set('etag', false);
-if (env('TRUST_PROXY') === '1') app.set('trust proxy', true);
+// Atrás de proxy (nginx, API Gateway, Vercel): confia no X-Forwarded-* pra saber o IP real e se é HTTPS.
+if (env('TRUST_PROXY') === '1' || config.SERVERLESS) app.set('trust proxy', true);
 
 const BASE = base_path();
 
@@ -48,19 +49,44 @@ app.use((req, res, next) => {
 // ─── Estáticos ───────────────────────────────────────────────────────────────
 const estatico = { index: false, dotfiles: 'deny', fallthrough: true, setHeaders: (res) => res.setHeader('X-Content-Type-Options', 'nosniff') };
 app.use(BASE + 'assets', express.static(path.join(config.ROOT_DIR, 'assets'), { ...estatico, maxAge: config.IS_PROD ? '30d' : 0 }));
-app.use(BASE + 'uploads', express.static(config.UPLOADS_DIR, estatico));
+// Uploads públicos (foto, contrato): vêm do Armazenamento (pasta uploads/ ou tabela `arquivos`).
+app.get(BASE + 'uploads/*', async (req, res) => {
+  const Armazenamento = require('./src/services/Armazenamento');
+  try {
+    const rel = 'uploads/' + decodeURIComponent(req.params[0] || '');
+    const conteudo = await Armazenamento.ler(rel);
+    if (!conteudo) return res.status(404).send('Não encontrado');
+    res.setHeader('Content-Type', Armazenamento.mimeDe(rel));
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('Cache-Control', 'private, max-age=86400');
+    res.end(conteudo);
+  } catch (e) {
+    Logger.error('Falha ao entregar upload', { erro: e.message });
+    res.status(500).send('Erro interno');
+  }
+});
 
 // ─── Sessão (gravada no MySQL: funciona com várias instâncias atrás do balanceador) ───
 // A tabela `sessions` é criada pelo Migrator (o store só lê e grava nela).
+// Pool próprio (o store sozinho ignoraria o SSL que os bancos na nuvem exigem).
+const poolSessoes = require('mysql2/promise').createPool({
+  ...require('./src/core/Database').conexao(),
+  connectionLimit: config.SERVERLESS ? 1 : 5, maxIdle: config.SERVERLESS ? 1 : 5, idleTimeout: 60000, enableKeepAlive: true,
+});
 const store = new MySQLStore({
-  host: env('DB_HOST', 'localhost'), port: Number(env('DB_PORT', 3306)),
-  user: env('DB_USER', 'root'), password: env('DB_PASS', ''), database: env('DB_NAME', 'dre_oaf'),
-  createDatabaseTable: false, clearExpired: true, checkExpirationInterval: 15 * 60 * 1000,
+  // Na Vercel não há processo sempre ligado pra limpar sessões vencidas; elas são ignoradas ao ler e limpas pelos acessos normais.
+  createDatabaseTable: false, clearExpired: !config.SERVERLESS, checkExpirationInterval: 15 * 60 * 1000,
   expiration: Session.REMEMBER * 1000,
   schema: { tableName: 'sessions', columnNames: { session_id: 'session_id', expires: 'expires', data: 'data' } },
-});
+}, poolSessoes);
 
 let segredo = env('SESSION_SECRET', '');
+if (!segredo && config.SERVERLESS) {
+  // Vercel sem SESSION_SECRET: cada instância geraria um segredo diferente e o login cairia.
+  // Deriva um segredo fixo dos dados do banco (configure SESSION_SECRET pra não depender disso).
+  segredo = require('crypto').createHash('sha256').update(`dre|${env('DB_HOST', '')}|${env('DB_USER', '')}|${env('DB_PASS', '')}|${env('DB_NAME', '')}`).digest('hex');
+  Logger.warn('SESSION_SECRET não definido — usando um segredo derivado da configuração do banco');
+}
 if (!segredo) {
   // Sem SESSION_SECRET no .env: gera um e guarda em storage/ (sobrevive a reinícios).
   const arq = path.join(config.STORAGE_DIR, 'session_secret');
@@ -89,7 +115,8 @@ app.use((req, res, next) => {
 });
 
 // ─── Corpo da requisição ─────────────────────────────────────────────────────
-const MAX_UPLOAD = Number(env('UPLOAD_MAX_MB', 22)) * 1024 * 1024;
+// Na Vercel o corpo da requisição tem limite de 4,5 MB (regra da plataforma).
+const MAX_UPLOAD = Number(env('UPLOAD_MAX_MB', config.SERVERLESS ? 4 : 22)) * 1024 * 1024;
 app.use(express.json({ limit: '25mb', type: ['application/json', 'application/*+json'] }));
 app.use(express.urlencoded({ extended: true, limit: '25mb' }));
 const upload = multer({ dest: path.join(os.tmpdir(), 'dre-uploads'), limits: { fileSize: MAX_UPLOAD, files: 200 } }).any();
@@ -142,5 +169,7 @@ async function iniciar() {
 }
 
 if (require.main === module) iniciar();
+
+// Na Vercel quem chama é o api/index.js, que exporta o próprio app (sem listen).
 
 module.exports = { app, iniciar };

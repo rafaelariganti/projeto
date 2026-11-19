@@ -4,10 +4,8 @@
  *   2. validar   — aplica mapeamento + opções e devolve a prévia linha a linha (ok / aviso / erro / duplicado)
  *   3. confirmar — grava as linhas válidas numa transação e registra a importação (dá pra desfazer depois)
  */
-const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
-const config = require('../bootstrap');
 const Auth = require('../core/Auth');
 const Database = require('../core/Database');
 const { HttpException } = require('../core/HttpException');
@@ -18,6 +16,7 @@ const Importacao = require('../models/Importacao');
 const Transacao = require('../models/Transacao');
 const PlanilhaReader = require('./Spreadsheet/PlanilhaReader');
 const XlsxWriter = require('./Spreadsheet/XlsxWriter');
+const Armazenamento = require('./Armazenamento');
 const { only_digits, mb_substr, round, empty, int, float, date, time, pad } = require('../helpers');
 
 const TIPOS = { lancamentos: 'Lançamentos', clientes: 'Clientes', fornecedores: 'Fornecedores' };
@@ -124,13 +123,13 @@ async function analisar(tipo, arquivo, temCabecalho = true) {
   if (!dados.length) throw new HttpException(400, 'Nenhuma linha com dados encontrada abaixo do cabeçalho');
   if (dados.length > PlanilhaReader.MAX_LINHAS) throw new HttpException(400, 'Máximo de ' + PlanilhaReader.MAX_LINHAS + ' linhas por importação');
 
-  limparAntigos();
+  await Armazenamento.limparAntigos('storage/imports', 86400);
   const token = crypto.randomBytes(16).toString('hex');
   const payload = {
     user_id: int(Auth.atual().id), tipo, arquivo: mb_substr(path.basename(String(arquivo.name).replace(/\\/g, '/')), 0, 255),
     headers, linhas: dados, criado: time(),
   };
-  try { fs.writeFileSync(caminho(token), JSON.stringify(payload)); } catch {
+  try { await Armazenamento.gravar(caminho(token), JSON.stringify(payload)); } catch {
     throw new HttpException(500, 'Não foi possível guardar o arquivo temporário (confira permissão de escrita em storage/)');
   }
 
@@ -240,12 +239,12 @@ function opcoesPadrao(o) {
   };
 }
 
-function carregar(token) {
+async function carregar(token) {
   if (!/^[a-f0-9]{32}$/.test(String(token))) throw new HttpException(400, 'Importação inválida');
-  const p = caminho(token);
-  if (!fs.existsSync(p)) throw new HttpException(410, 'Essa prévia expirou. Envie o arquivo de novo.');
+  const bruto = await Armazenamento.ler(caminho(token));
+  if (!bruto) throw new HttpException(410, 'Essa prévia expirou. Envie o arquivo de novo.');
   let d = null;
-  try { d = JSON.parse(fs.readFileSync(p, 'utf8')); } catch { d = null; }
+  try { d = JSON.parse(bruto.toString('utf8')); } catch { d = null; }
   if (!d || typeof d !== 'object' || int(d.user_id) !== int(Auth.atual().id)) throw new HttpException(403, 'Importação de outro usuário');
   return d;
 }
@@ -254,7 +253,7 @@ const conjunto = (lista) => new Set(lista);
 
 /** Aplica mapeamento + opções em todas as linhas. Não grava nada. */
 async function processar(token, mapa, opcoes) {
-  const d = carregar(token);
+  const d = await carregar(token);
   const tipo = d.tipo;
   const cs = campos(tipo);
   opcoes = opcoesPadrao(opcoes);
@@ -426,7 +425,7 @@ async function confirmar(token, mapa, opcoes) {
     await Importacao.update(impId, { importados: n, ignorados: prev.total - n, valor_total: round(total, 2) });
     return { id: impId, importados: n, ignorados: prev.total - n, categorias_criadas: Object.values(catsCriadas).filter((x) => x).length, saldo: round(total, 2) };
   });
-  try { fs.unlinkSync(caminho(token)); } catch { /* já foi */ }
+  await Armazenamento.apagar(caminho(token));
   return { ...res, tipo, arquivo: prev.arquivo };
 }
 
@@ -454,21 +453,7 @@ function modelo(tipo) {
   ];
 }
 
-// ─── Arquivos temporários ───────────────────────────────────────────────────
-function caminho(token) {
-  const dir = path.join(config.STORAGE_DIR, 'imports');
-  fs.mkdirSync(dir, { recursive: true, mode: 0o770 });
-  return path.join(dir, `${token}.json`);
-}
-
-function limparAntigos() {
-  const dir = path.join(config.STORAGE_DIR, 'imports');
-  let arquivos = [];
-  try { arquivos = fs.readdirSync(dir).filter((f) => f.endsWith('.json')); } catch { return; }
-  for (const f of arquivos) {
-    const full = path.join(dir, f);
-    try { if (fs.statSync(full).mtimeMs < Date.now() - 86400000) fs.unlinkSync(full); } catch { /* ignora */ }
-  }
-}
+// ─── Arquivos temporários (guardados pelo Armazenamento: disco ou banco) ─────
+function caminho(token) { return `storage/imports/${token}.json`; }
 
 module.exports = { TIPOS, campos, normalizar, analisar, valor, data, tipo: tipoDe, status, opcoesPadrao, processar, confirmar, modelo };

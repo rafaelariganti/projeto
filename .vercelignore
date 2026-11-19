@@ -1,0 +1,12 @@
+docs
+infra
+tests
+.github
+storage/notas/*
+storage/comprovantes/*
+storage/imports/*
+uploads/*/*
+*.md
+database.sql
+docker-compose*.yml
+Dockerfile

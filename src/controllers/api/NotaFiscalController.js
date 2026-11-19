@@ -2,7 +2,6 @@
  * Notas fiscais: anexar, ver, substituir e remover PDF/XML; vincular a lançamento;
  * ler o XML pra preencher a nota e o lançamento; importar várias de uma vez.
  */
-const fs = require('fs');
 const path = require('path');
 const { DOMParser } = require('@xmldom/xmldom');
 const Controller = require('../../core/Controller');
@@ -21,7 +20,7 @@ const MAX_PDF = 15 * 1024 * 1024;
 const MAX_XML = 5 * 1024 * 1024;
 const MAX_LOTE = 20;
 const tem = (o, k) => Object.prototype.hasOwnProperty.call(o, k);
-const lerArquivo = (f) => fs.readFileSync(f.tmp_name);
+const lerArquivo = (f) => Upload.lerEnviado(f);
 const semExt = (nome) => path.basename(nome, path.extname(nome));
 
 /** Reindenta o XML pra mostrar na tela (se não der, devolve como veio). */
@@ -112,8 +111,8 @@ class NotaFiscalController extends Controller {
     }
     const d = await NotaFiscal.campos(inp, null);
     const txId = await this.txValido(inp.transaction_id ?? null);
-    const arqPdf = pdf ? Upload.salvarPrivado(pdf, PASTA, ['pdf'], MAX_PDF) : null;
-    const arqXml = xml ? Upload.salvarPrivado(xml, PASTA, ['xml'], MAX_XML) : null;
+    const arqPdf = pdf ? await Upload.salvarPrivado(pdf, PASTA, ['pdf'], MAX_PDF) : null;
+    const arqXml = xml ? await Upload.salvarPrivado(xml, PASTA, ['xml'], MAX_XML) : null;
     const id = await NotaFiscal.create({
       ...d,
       pdf_path: arqPdf?.path ?? null, pdf_nome: arqPdf?.nome ?? null,
@@ -134,8 +133,8 @@ class NotaFiscalController extends Controller {
     for (const [qual, max] of [['pdf', MAX_PDF], ['xml', MAX_XML]]) {
       const f = Upload.lista(qual)[0] ?? null;
       if (!f) continue;
-      const arq = Upload.salvarPrivado(f, PASTA, [qual], max);
-      Upload.apagar(atual[qual + '_path']);
+      const arq = await Upload.salvarPrivado(f, PASTA, [qual], max);
+      await Upload.apagar(atual[qual + '_path']);
       extra[qual + '_path'] = arq.path; extra[qual + '_nome'] = arq.nome;
       troca.push(qual.toUpperCase() + (atual[qual + '_path'] ? ' substituído' : ' anexado') + `: ${arq.nome}`);
     }
@@ -155,7 +154,7 @@ class NotaFiscalController extends Controller {
     if (!nf[qual + '_path']) throw new HttpException(400, 'Essa nota não tem ' + qual.toUpperCase());
     const outro = qual === 'pdf' ? 'xml' : 'pdf';
     if (!nf[outro + '_path']) throw new HttpException(400, 'Esse é o único arquivo da nota. Para tirar tudo, apague a nota.');
-    Upload.apagar(nf[qual + '_path']);
+    await Upload.apagar(nf[qual + '_path']);
     await NotaFiscal.update(id, { [qual + '_path']: null, [qual + '_nome']: null, updated_at: agora() });
     await this.log('update', 'notas_fiscais', id, this.rotulo(nf) + ' — ' + qual.toUpperCase() + ` removido: ${nf[qual + '_nome']}`);
     return this.nota(id);
@@ -166,8 +165,8 @@ class NotaFiscalController extends Controller {
     id = int(id);
     const nf = await NotaFiscal.findOrFail(id, 'Nota fiscal não encontrada');
     await NotaFiscal.delete(id);
-    Upload.apagar(nf.pdf_path);
-    Upload.apagar(nf.xml_path);
+    await Upload.apagar(nf.pdf_path);
+    await Upload.apagar(nf.xml_path);
     await this.log('delete', 'notas_fiscais', id, this.rotulo(nf), null, nf);
     return { ok: true };
   }
@@ -177,12 +176,12 @@ class NotaFiscalController extends Controller {
     await this.autorizar('notas-fiscais');
     if (!['pdf', 'xml'].includes(qual)) throw new HttpException(404, 'Arquivo não encontrado');
     const nf = await NotaFiscal.findOrFail(int(id), 'Nota fiscal não encontrada');
-    const full = Upload.caminhoPrivado(nf[qual + '_path']);
-    if (!full) throw new HttpException(404, 'Arquivo não encontrado');
+    const conteudo = await Upload.lerPrivado(nf[qual + '_path']);
+    if (!conteudo) throw new HttpException(404, 'Arquivo não encontrado');
     const nome = String(nf[qual + '_nome'] || `nota-${nf.id}.${qual}`);
     // PDF abre dentro da própria tela (iframe do mesmo site); XML sempre baixa (o navegador não interpreta).
     const inline = qual === 'pdf' && this.query('download') !== '1';
-    Arquivo.enviar(full, qual === 'pdf' ? 'application/pdf' : 'application/xml; charset=utf-8', nome,
+    Arquivo.enviar(conteudo, qual === 'pdf' ? 'application/pdf' : 'application/xml; charset=utf-8', nome,
       { download: !inline, headers: { 'Cache-Control': 'private, no-store', 'X-Frame-Options': 'SAMEORIGIN' } });
   }
 
@@ -190,9 +189,8 @@ class NotaFiscalController extends Controller {
   async xml(id) {
     await this.autorizar('notas-fiscais');
     const nf = await NotaFiscal.findOrFail(int(id), 'Nota fiscal não encontrada');
-    const full = Upload.caminhoPrivado(nf.xml_path);
-    if (!full) throw new HttpException(404, 'Essa nota não tem XML');
-    const bruto = fs.readFileSync(full);
+    const bruto = await Upload.lerPrivado(nf.xml_path);
+    if (!bruto) throw new HttpException(404, 'Essa nota não tem XML');
     let dados = null; let erro = null;
     try { dados = NotaFiscalXml.ler(bruto); } catch (e) { if (!(e instanceof HttpException)) throw e; erro = e.message; }
     const txt = NotaFiscalXml.decodificar(bruto);
@@ -225,13 +223,13 @@ class NotaFiscalController extends Controller {
   async sugestaoLancamento(id) {
     await this.autorizar('notas-fiscais');
     const nf = await NotaFiscal.findOrFail(int(id), 'Nota fiscal não encontrada');
-    return NotaFiscal.sugerirLancamento(nf, this.xmlLido(nf));
+    return NotaFiscal.sugerirLancamento(nf, await this.xmlLido(nf));
   }
 
-  xmlLido(nf) {
-    const full = Upload.caminhoPrivado(nf.xml_path);
-    if (!full) return null;
-    try { return NotaFiscalXml.ler(fs.readFileSync(full)); } catch (e) { if (e instanceof HttpException) return null; throw e; }
+  async xmlLido(nf) {
+    const bruto = await Upload.lerPrivado(nf.xml_path);
+    if (!bruto) return null;
+    try { return NotaFiscalXml.ler(bruto); } catch (e) { if (e instanceof HttpException) return null; throw e; }
   }
 
   async txValido(v) {
@@ -298,7 +296,7 @@ class NotaFiscalController extends Controller {
         if (dup) {
           let msg = 'Nota já cadastrada (nº ' + (dup.numero || dup.id) + ')';
           if (pdf && !dup.pdf_path) {
-            const a = Upload.salvarPrivado(pdf.f, PASTA, ['pdf'], MAX_PDF);
+            const a = await Upload.salvarPrivado(pdf.f, PASTA, ['pdf'], MAX_PDF);
             await NotaFiscal.update(int(dup.id), { pdf_path: a.path, pdf_nome: a.nome, updated_at: agora() });
             msg += ' — PDF anexado a ela';
           }
@@ -307,8 +305,8 @@ class NotaFiscalController extends Controller {
         }
         d.tipo = await NotaFiscal.sugerirTipo(d);
         const campos = await NotaFiscal.campos(d, null);
-        const ax = Upload.salvarPrivado(x.f, PASTA, ['xml'], MAX_XML);
-        const ap = pdf ? Upload.salvarPrivado(pdf.f, PASTA, ['pdf'], MAX_PDF) : null;
+        const ax = await Upload.salvarPrivado(x.f, PASTA, ['xml'], MAX_XML);
+        const ap = pdf ? await Upload.salvarPrivado(pdf.f, PASTA, ['pdf'], MAX_PDF) : null;
         const nfId = await NotaFiscal.create({ ...campos, xml_path: ax.path, xml_nome: ax.nome,
           pdf_path: ap?.path ?? null, pdf_nome: ap?.nome ?? null, user_id: u.id });
         let txId = null;
@@ -333,7 +331,7 @@ class NotaFiscalController extends Controller {
     for (const p of pdfs) {
       if (p.usado) continue;
       try {
-        const ap = Upload.salvarPrivado(p.f, PASTA, ['pdf'], MAX_PDF);
+        const ap = await Upload.salvarPrivado(p.f, PASTA, ['pdf'], MAX_PDF);
         const m = semExt(p.nome).match(/(\d{3,9})/);
         const num = m && only_digits(p.nome).length < 44 ? m[1].replace(/^0+/, '') : null;
         const nfId = await NotaFiscal.create({ tipo: 'entrada', numero: num || null, valor: 0, descricao: mb_substr(semExt(p.nome), 0, 255),

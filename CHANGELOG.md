@@ -1,6 +1,14 @@
 # Changelog
 
 
+## 4.1.0 — nov/2026 · roda na Vercel
+
+- Entrada `api/index.js` + `vercel.json`: o app vira função serverless; `assets/` vai pra CDN no build (`scripts/vercel-build.js`).
+- **Armazenamento** novo (`src/services/Armazenamento.js`): uploads, notas, comprovantes e importações em andamento podem ficar no disco ou na tabela `arquivos` do banco (`ARMAZENAMENTO=banco`, automático na Vercel). Fotos e contratos públicos agora são entregues pela rota `/uploads/*`.
+- Versão do schema guardada no banco (tabela `app_meta`), não só em arquivo.
+- Banco na nuvem: SSL (`DB_SSL`, `DB_SSL_CA`) e `DATABASE_URL`. Sessões usam pool próprio com SSL.
+- Na Vercel: confia no proxy pra IP/HTTPS, pool pequeno por instância, limite de upload de 4 MB.
+
 ## 4.0.0 — nov/2026 · versão Node.js
 
 Sistema portado de PHP para **Node.js 22 + Express**, mantendo telas, API, banco e regras iguais.

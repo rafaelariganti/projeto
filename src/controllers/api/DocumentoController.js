@@ -32,7 +32,7 @@ class DocumentoController extends Controller {
     const fornecedorId = this.input('fornecedor_id') ? int(this.input('fornecedor_id')) : null;
     if (tipo === 'contrato_parceiro' && (!parceiroId || !(await Database.one('SELECT id FROM parceiros WHERE id=?', [parceiroId])))) throw new HttpException(400, 'Selecione o parceiro');
     if (tipo === 'contrato_fornecedor' && (!fornecedorId || !(await Database.one('SELECT id FROM fornecedores WHERE id=?', [fornecedorId])))) throw new HttpException(400, 'Selecione o fornecedor');
-    const arq = Upload.salvar('arquivo', 'documentos', Upload.DOCUMENTO);
+    const arq = await Upload.salvar('arquivo', 'documentos', Upload.DOCUMENTO);
     if (!arq) throw new HttpException(400, 'Arquivo não enviado');
     const id = await Documento.create({
       tipo, parceiro_id: parceiroId, fornecedor_id: fornecedorId,
@@ -48,7 +48,7 @@ class DocumentoController extends Controller {
     const row = await Documento.findOrFail(id, 'Documento não encontrado');
     await this.permitir(row.tipo, true);
     await Documento.delete(id);
-    Upload.apagar(row.arquivo_path);
+    await Upload.apagar(row.arquivo_path);
     await this.log('delete', 'documentos', id, row.arquivo_nome, null, row);
     return { ok: true };
   }
@@ -59,9 +59,9 @@ class DocumentoController extends Controller {
     id = int(id);
     const row = await Database.one(`SELECT id, nome, contrato_path FROM \`${tabela}\` WHERE id=?`, [id]);
     if (!row) throw new HttpException(404, `${label} não encontrado`);
-    const ct = Upload.salvar('contrato', tabela, Upload.CONTRATO);
+    const ct = await Upload.salvar('contrato', tabela, Upload.CONTRATO);
     if (!ct) throw new HttpException(400, 'Arquivo não enviado');
-    Upload.apagar(row.contrato_path);
+    await Upload.apagar(row.contrato_path);
     await Database.run(`UPDATE \`${tabela}\` SET contrato_path=?, contrato_nome=? WHERE id=?`, [ct.path, ct.nome, id]);
     await this.log('update', tabela, id, `${row.nome} — contrato anexado: ${ct.nome}`);
     return { contrato_path: public_path(ct.path), contrato_nome: ct.nome };
@@ -73,7 +73,7 @@ class DocumentoController extends Controller {
     id = int(id);
     const row = await Database.one(`SELECT id, nome, contrato_path FROM \`${tabela}\` WHERE id=?`, [id]);
     if (!row) throw new HttpException(404, `${label} não encontrado`);
-    Upload.apagar(row.contrato_path);
+    await Upload.apagar(row.contrato_path);
     await Database.run(`UPDATE \`${tabela}\` SET contrato_path=NULL, contrato_nome=NULL WHERE id=?`, [id]);
     await this.log('update', tabela, id, `${row.nome} — contrato removido`);
     return { ok: true };

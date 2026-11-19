@@ -99,8 +99,8 @@ class TransacaoController extends Controller {
     const row = await Transacao.findOrFail(id, 'Lançamento não encontrado');
     const f = Upload.lista('comprovante')[0] ?? null;
     if (!f) throw new HttpException(400, 'Escolha o arquivo do comprovante (PDF ou imagem)');
-    const arq = Upload.salvarPrivado(f, 'comprovantes', COMPROVANTE_EXTS, COMPROVANTE_MAX);
-    Upload.apagar(row.comprovante_path);
+    const arq = await Upload.salvarPrivado(f, 'comprovantes', COMPROVANTE_EXTS, COMPROVANTE_MAX);
+    await Upload.apagar(row.comprovante_path);
     await Transacao.update(id, { comprovante_path: arq.path, comprovante_nome: arq.nome });
     await this.log('update', 'transactions', id, `${row.descricao} — comprovante ` + (row.comprovante_path ? 'substituído' : 'anexado') + `: ${arq.nome}`);
     return { ok: true, tem_comprovante: true, comprovante_nome: arq.nome };
@@ -111,7 +111,7 @@ class TransacaoController extends Controller {
     id = int(id);
     const row = await Transacao.findOrFail(id, 'Lançamento não encontrado');
     if (!row.comprovante_path) throw new HttpException(400, 'Esse lançamento não tem comprovante');
-    Upload.apagar(row.comprovante_path);
+    await Upload.apagar(row.comprovante_path);
     await Transacao.update(id, { comprovante_path: null, comprovante_nome: null });
     await this.log('update', 'transactions', id, `${row.descricao} — comprovante removido: ${row.comprovante_nome}`);
     return { ok: true, tem_comprovante: false };
@@ -121,12 +121,12 @@ class TransacaoController extends Controller {
   async verComprovante(id) {
     await this.autorizar('lancamentos', 'calendario');
     const row = await Transacao.findOrFail(int(id), 'Lançamento não encontrado');
-    const full = Upload.caminhoPrivado(row.comprovante_path);
-    if (!full) throw new HttpException(404, 'Comprovante não encontrado');
-    const ext = path.extname(full).slice(1).toLowerCase();
+    const conteudo = await Upload.lerPrivado(row.comprovante_path);
+    if (!conteudo) throw new HttpException(404, 'Comprovante não encontrado');
+    const ext = path.extname(String(row.comprovante_path)).slice(1).toLowerCase();
     const mime = { pdf: 'application/pdf', png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', webp: 'image/webp' }[ext] ?? 'application/octet-stream';
     const nome = String(row.comprovante_nome || `comprovante-${row.id}.${ext}`);
-    Arquivo.enviar(full, mime, nome, { download: this.query('download') === '1', headers: { 'Cache-Control': 'private, no-store', 'X-Frame-Options': 'SAMEORIGIN' } });
+    Arquivo.enviar(conteudo, mime, nome, { download: this.query('download') === '1', headers: { 'Cache-Control': 'private, no-store', 'X-Frame-Options': 'SAMEORIGIN' } });
   }
 
   // ─── Transferências ─────────────────────────────────────────────────────

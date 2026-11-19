@@ -15,8 +15,8 @@ class ParceiroController extends Controller {
   async store() {
     await this.autorizarEdicao('cad-parceiros');
     const f = await Parceiro.campos(this.body(), null);
-    const foto = Upload.salvar('foto', 'parceiros', Upload.IMAGEM, 8 * 1024 * 1024);
-    const ct = Upload.salvar('contrato', 'parceiros', Upload.CONTRATO);
+    const foto = await Upload.salvar('foto', 'parceiros', Upload.IMAGEM, 8 * 1024 * 1024);
+    const ct = await Upload.salvar('contrato', 'parceiros', Upload.CONTRATO);
     Object.assign(f, { foto_path: foto?.path ?? null, foto_nome: foto?.nome ?? null, contrato_path: ct?.path ?? null, contrato_nome: ct?.nome ?? null });
     const id = await Parceiro.create(f);
     await this.log('create', 'parceiros', id, `${f.nome} (${f.cnpj})`);
@@ -29,17 +29,17 @@ class ParceiroController extends Controller {
     const atual = await Parceiro.findOrFail(id, 'Parceiro não encontrado');
     const f = await Parceiro.campos(this.body(), id);
     for (const k of ['foto_path', 'foto_nome', 'contrato_path', 'contrato_nome']) f[k] = atual[k];
-    const foto = Upload.salvar('foto', 'parceiros', Upload.IMAGEM, 8 * 1024 * 1024);
+    const foto = await Upload.salvar('foto', 'parceiros', Upload.IMAGEM, 8 * 1024 * 1024);
     if (foto) {
-      Upload.apagar(atual.foto_path); f.foto_path = foto.path; f.foto_nome = foto.nome;
+      await Upload.apagar(atual.foto_path); f.foto_path = foto.path; f.foto_nome = foto.nome;
     } else if (this.input('remover_foto') === '1') {
-      Upload.apagar(atual.foto_path); f.foto_path = null; f.foto_nome = null;
+      await Upload.apagar(atual.foto_path); f.foto_path = null; f.foto_nome = null;
     }
-    const ct = Upload.salvar('contrato', 'parceiros', Upload.CONTRATO);
+    const ct = await Upload.salvar('contrato', 'parceiros', Upload.CONTRATO);
     if (ct) {
-      Upload.apagar(atual.contrato_path); f.contrato_path = ct.path; f.contrato_nome = ct.nome;
+      await Upload.apagar(atual.contrato_path); f.contrato_path = ct.path; f.contrato_nome = ct.nome;
     } else if (this.input('remover_contrato') === '1') {
-      Upload.apagar(atual.contrato_path); f.contrato_path = null; f.contrato_nome = null;
+      await Upload.apagar(atual.contrato_path); f.contrato_path = null; f.contrato_nome = null;
     }
     await Parceiro.update(id, f);
     await this.log('update', 'parceiros', id, `${f.nome} (${f.cnpj})`);
@@ -61,8 +61,8 @@ class ParceiroController extends Controller {
     id = int(id);
     const row = await Parceiro.findOrFail(id, 'Parceiro não encontrado');
     await Parceiro.delete(id);
-    Upload.apagar(row.foto_path); Upload.apagar(row.contrato_path);
-    for (const d of await Documento.doParceiro(id)) Upload.apagar(d.arquivo_path);
+    await Upload.apagar(row.foto_path); await Upload.apagar(row.contrato_path);
+    for (const d of await Documento.doParceiro(id)) await Upload.apagar(d.arquivo_path);
     await Database.run('DELETE FROM documentos WHERE parceiro_id=?', [id]);
     await this.log('delete', 'parceiros', id, row.nome, null, row);
     return { ok: true };

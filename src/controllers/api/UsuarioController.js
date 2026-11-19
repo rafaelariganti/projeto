@@ -118,7 +118,7 @@ class UsuarioController extends Controller {
     if (!u) throw new HttpException(404, 'Usuário não encontrado');
     if (int(u.is_admin) && !(await User.adminsRestantes(id))) throw new HttpException(400, 'O sistema precisa de pelo menos um administrador ativo');
     await User.delete(id);
-    Upload.apagar(u.foto_path);
+    await Upload.apagar(u.foto_path);
     const copia = { ...u }; delete copia.perfil_permissoes; delete copia.perfil_admin;
     await this.log('delete', 'users', id, `${u.username} (${u.perfil_nome})`, null, copia);
     return { ok: true };
