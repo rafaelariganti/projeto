@@ -1,0 +1,18 @@
+# Produção na EC2 (usado pelo scripts/deploy.sh). O .env é gerado na EC2, nunca vai pro Git.
+# A porta 80 da EC2 (a que o API Gateway chama) aponta pra 3000 do container.
+services:
+  app:
+    image: dre-app:${APP_TAG:-latest}
+    container_name: dre-app
+    restart: unless-stopped
+    ports: ["80:3000"]
+    env_file: .env
+    volumes:
+      - /opt/dre/data/uploads:/app/uploads
+      - /opt/dre/data/storage:/app/storage
+    logging:
+      driver: awslogs
+      options:
+        awslogs-region: ${AWS_REGION:-us-east-1}
+        awslogs-group: /dre/${ENVIRONMENT:-dev}/app
+        awslogs-stream: ${HOSTNAME_TAG:-ec2}-app

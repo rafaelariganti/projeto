@@ -1,0 +1,15 @@
+.git
+.github
+.env
+infra
+tests
+scripts
+docs
+node_modules
+storage/imports/*
+storage/notas/*
+storage/comprovantes/*
+storage/schema_version
+storage/session_secret
+uploads/*/*
+!**/.gitkeep

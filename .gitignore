@@ -1,0 +1,13 @@
+node_modules/
+.env
+uploads/*/*
+!uploads/*/.gitkeep
+storage/imports/*
+!storage/imports/.gitkeep
+storage/schema_version
+storage/session_secret
+storage/notas/*
+!storage/notas/.gitkeep
+storage/comprovantes/*
+!storage/comprovantes/.gitkeep
+*.log

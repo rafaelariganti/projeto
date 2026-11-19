@@ -1,0 +1,22 @@
+<%# Layout das telas sem menu (login, erro). Recebe: titulo, content, scriptsAuth -%><!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title><%= titulo ?? 'Entrar' %> — OAF Controle Financeiro</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet"/>
+<link rel="icon" type="image/png" href="<%= url('assets/img/logo-oaf-mark.png') %>"/>
+<link rel="stylesheet" href="<%= asset('css/app.css') %>"/>
+<script>window.APP = <%- json({ 'base': base_path(), 'csrf': Csrf.token(), 'versao': APP_VERSION }) %>;</script>
+</head>
+<body class="auth-body">
+<%- content %>
+<div class="toasts" id="toasts"></div>
+<% if (!empty(locals.scriptsAuth)) { %>
+<script src="<%= asset('js/core.js') %>"></script>
+<% for (const s of scriptsAuth) { %><script src="<%= asset('js/' + s) %>"></script><% } %>
+<% } %>
+</body>
+</html>

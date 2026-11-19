@@ -1,0 +1,36 @@
+{
+  "name": "dre-system",
+  "version": "4.0.0",
+  "description": "DRE System — OAF Controle Financeiro (Node.js + Express + MySQL, MVC)",
+  "main": "server.js",
+  "private": true,
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js",
+    "migrate": "node src/database/Migrator.js --migrate",
+    "schema": "node src/database/Migrator.js --sql > database.sql",
+    "test": "node tests/unit/run.js",
+    "dados": "node src/database/DadosFicticios.js",
+    "smoke": "bash tests/smoke.sh"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "@xmldom/xmldom": "^0.9.12",
+    "adm-zip": "^0.6.1",
+    "bcryptjs": "^3.0.3",
+    "ejs": "^7.0.2",
+    "express": "^4.22.3",
+    "express-mysql-session": "^3.0.3",
+    "express-session": "^1.19.0",
+    "multer": "^2.5.0",
+    "mysql2": "^3.24.6",
+    "qs": "^6.17.1"
+  },
+  "overrides": {
+    "express-mysql-session": {
+      "mysql2": "$mysql2"
+    }
+  }
+}
